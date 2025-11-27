@@ -8,12 +8,22 @@ import os from 'os';
 export class YouTubeAudioFetcher {
     private readonly MAX_DURATION_SECONDS = 1200; // 20 minutes
     private ytDlp: ReturnType<typeof createYtDlp>;
+    private cookiesPath?: string;
 
     constructor() {
         // Resolve absolute path to yt-dlp binary
         // In Next.js/Turbopack, relative paths may not work correctly
         const ytDlpBinary = path.resolve(process.cwd(), 'node_modules/yt-dlp-exec/bin/yt-dlp');
         console.log(`[YouTubeAudioFetcher] Using yt-dlp binary at: ${ytDlpBinary}`);
+
+        // Check for cookies file (optional, helps avoid YouTube bot detection)
+        const cookiesPath = path.resolve(process.cwd(), 'youtube-cookies.txt');
+        if (fs.existsSync(cookiesPath)) {
+            this.cookiesPath = cookiesPath;
+            console.log(`[YouTubeAudioFetcher] Using cookies from: ${cookiesPath}`);
+        } else {
+            console.log(`[YouTubeAudioFetcher] No cookies file found at ${cookiesPath}, proceeding without cookies`);
+        }
 
         // Create a custom instance with the explicit binary path
         this.ytDlp = createYtDlp(ytDlpBinary);
@@ -34,10 +44,17 @@ export class YouTubeAudioFetcher {
 
         try {
             console.log(`[YouTubeAudioFetcher] Fetching video info with yt-dlp...`);
-            const output = await this.ytDlp(url, {
+            const flags: any = {
                 dumpJson: true,
                 noWarnings: true,
-            });
+            };
+
+            // Add cookies if available
+            if (this.cookiesPath) {
+                flags.cookies = this.cookiesPath;
+            }
+
+            const output = await this.ytDlp(url, flags);
 
             // yt-dlp-exec returns the output as an object if dumpJson is true, 
             // but the types might be loose. It usually returns the parsed JSON.
@@ -65,11 +82,17 @@ export class YouTubeAudioFetcher {
             // To get a stream, we can use the `exec` method from the package or just use `child_process` with the binary path provided by the package.
             // Actually, yt-dlp-exec exports a function `exec` that returns a ChildProcess.
 
-            const subprocess = this.ytDlp.exec(url, {
+            const execFlags: any = {
                 output: '-', // Stdout
                 format: 'bestaudio',
                 noWarnings: true,
-            });
+            };
+
+            if (this.cookiesPath) {
+                execFlags.cookies = this.cookiesPath;
+            }
+
+            const subprocess = this.ytDlp.exec(url, execFlags);
 
             if (!subprocess.stdout) {
                 throw new Error('Failed to spawn yt-dlp process (no stdout)');
@@ -96,10 +119,16 @@ export class YouTubeAudioFetcher {
     async getVideoMeta(url: string) {
         try {
             console.log(`[YouTubeAudioFetcher] Getting video meta for: ${url}`);
-            const output = await this.ytDlp(url, {
+            const metaFlags: any = {
                 dumpJson: true,
                 noWarnings: true,
-            });
+            };
+
+            if (this.cookiesPath) {
+                metaFlags.cookies = this.cookiesPath;
+            }
+
+            const output = await this.ytDlp(url, metaFlags);
             const info = output as any;
 
             return {
