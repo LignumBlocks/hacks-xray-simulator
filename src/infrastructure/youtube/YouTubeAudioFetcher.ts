@@ -140,20 +140,18 @@ export class YouTubeAudioFetcher {
             // Create a read stream from the temp file
             const audioStream = fs.createReadStream(tempFile);
 
-            // DISABLED: Clean up temp file for debugging
-            // audioStream.on('end', () => {
-            //     console.log(`[YouTubeAudioFetcher] Cleaning up temp file: ${tempFile}`);
-            //     fs.unlink(tempFile, (err) => {
-            //         if (err) console.error(`[YouTubeAudioFetcher] Failed to delete temp file:`, err);
-            //     });
-            // });
+            // Clean up temp file after stream is consumed
+            audioStream.on('end', () => {
+                console.log(`[YouTubeAudioFetcher] Cleaning up temp file: ${tempFile}`);
+                fs.unlink(tempFile, (err) => {
+                    if (err) console.error(`[YouTubeAudioFetcher] Failed to delete temp file:`, err);
+                });
+            });
 
-            // audioStream.on('error', () => {
-            //     // Also clean up on error
-            //     fs.unlink(tempFile, () => {});
-            // });
-
-            console.log(`[YouTubeAudioFetcher] TEMP FILE KEPT FOR DEBUGGING: ${tempFile}`);
+            audioStream.on('error', () => {
+                // Also clean up on error
+                fs.unlink(tempFile, () => { });
+            });
 
             return audioStream;
 

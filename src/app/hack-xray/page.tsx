@@ -89,6 +89,12 @@ export default function HackXRayPage() {
                 <header className="mb-10 text-center">
                     <h1 className="text-4xl font-bold text-indigo-600 mb-2">Hintsly Hack X-Ray</h1>
                     <p className="text-slate-600">Paste a money hack. Get the brutal truth.</p>
+                    <a
+                        href="/admin/hacks"
+                        className="inline-block mt-3 text-sm text-indigo-600 hover:text-indigo-800 underline"
+                    >
+                        View All Analyzed Hacks →
+                    </a>
                 </header>
 
                 <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8">
