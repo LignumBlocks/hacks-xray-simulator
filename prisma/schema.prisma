@@ -1,0 +1,33 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model HackReport {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+
+  hackText        String
+  sourceLink      String?
+  country         String   @default("US")
+
+  // Denormalized fields for quick filtering (HU04)
+  hackType        String
+  primaryCategory String
+  verdictLabel    String
+  riskLevel       String
+
+  // Full JSON report from LLM
+  rawLabReport    Json
+
+  @@index([createdAt])
+  @@index([hackType])
+  @@index([verdictLabel])
+}
