@@ -75,35 +75,53 @@ export class YouTubeAudioFetcher {
 
             console.log(`[YouTubeAudioFetcher] Downloading audio stream...`);
 
-            // Use format 140 which is M4A audio that YouTube always has available
-            // This avoids format conversion issues and works without FFmpeg
-            const execFlags: any = {
-                output: '-', // Stdout
-                format: '140/bestaudio[ext=m4a]/bestaudio', // Format 140 = M4A, fallback to best M4A, then any
+            // Download to temp file first to ensure proper format
+            // Streaming directly doesn't work when format 140 is unavailable
+            const tempDir = os.tmpdir();
+            const tempFile = path.join(tempDir, `yt-audio-${Date.now()}.webm`);
+
+            console.log(`[YouTubeAudioFetcher] Downloading to temp file: ${tempFile}`);
+
+            const downloadFlags: any = {
+                output: tempFile,
+                format: 'bestaudio/best',
                 noWarnings: true,
             };
 
             if (this.cookiesPath) {
-                execFlags.cookies = this.cookiesPath;
+                downloadFlags.cookies = this.cookiesPath;
             }
 
-            console.log('[YouTubeAudioFetcher] yt-dlp flags:', JSON.stringify(execFlags, null, 2));
+            console.log('[YouTubeAudioFetcher] yt-dlp flags:', JSON.stringify(downloadFlags, null, 2));
 
-            const subprocess = this.ytDlp.exec(url, execFlags);
+            // Download the audio file
+            await this.ytDlp(url, downloadFlags);
 
-            if (!subprocess.stdout) {
-                throw new Error('Failed to spawn yt-dlp process (no stdout)');
+            // Verify file exists
+            if (!fs.existsSync(tempFile)) {
+                throw new Error('Failed to download audio file');
             }
 
-            // DIAGNOSTIC: Log stderr to see what format yt-dlp actually selected
-            if (subprocess.stderr) {
-                subprocess.stderr.on('data', (data) => {
-                    const msg = data.toString();
-                    console.log('[YouTubeAudioFetcher] yt-dlp stderr:', msg);
+            const fileSize = fs.statSync(tempFile).size;
+            console.log(`[YouTubeAudioFetcher] Audio downloaded, size: ${fileSize} bytes`);
+
+            // Create a read stream from the temp file
+            const audioStream = fs.createReadStream(tempFile);
+
+            // Clean up temp file after stream is consumed
+            audioStream.on('end', () => {
+                console.log(`[YouTubeAudioFetcher] Cleaning up temp file: ${tempFile}`);
+                fs.unlink(tempFile, (err) => {
+                    if (err) console.error(`[YouTubeAudioFetcher] Failed to delete temp file:`, err);
                 });
-            }
+            });
 
-            return subprocess.stdout;
+            audioStream.on('error', () => {
+                // Also clean up on error
+                fs.unlink(tempFile, () => { });
+            });
+
+            return audioStream;
 
         } catch (err: any) {
             console.error(`[YouTubeAudioFetcher] Error:`, err);
