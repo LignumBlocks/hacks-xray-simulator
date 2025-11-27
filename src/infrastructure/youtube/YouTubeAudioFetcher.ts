@@ -75,16 +75,18 @@ export class YouTubeAudioFetcher {
 
             console.log(`[YouTubeAudioFetcher] Downloading audio stream...`);
 
-            // Download to temp file first to ensure proper format
-            // Streaming directly doesn't work when format 140 is unavailable
+            // YouTube Shorts don't have audio-only streams, so we need to extract audio from video
+            // This requires yt-dlp to extract and convert the audio
             const tempDir = os.tmpdir();
-            const tempFile = path.join(tempDir, `yt-audio-${Date.now()}.webm`);
+            const tempFile = path.join(tempDir, `yt-audio-${Date.now()}.m4a`);
 
-            console.log(`[YouTubeAudioFetcher] Downloading to temp file: ${tempFile}`);
+            console.log(`[YouTubeAudioFetcher] Downloading and extracting audio to: ${tempFile}`);
 
             const downloadFlags: any = {
                 output: tempFile,
-                format: 'bestaudio*', // Force audio-only with asterisk
+                extractAudio: true,
+                audioFormat: 'm4a',
+                audioQuality: 0, // Best quality
                 noWarnings: true,
             };
 
@@ -94,8 +96,31 @@ export class YouTubeAudioFetcher {
 
             console.log('[YouTubeAudioFetcher] yt-dlp flags:', JSON.stringify(downloadFlags, null, 2));
 
-            // Download the audio file
-            await this.ytDlp(url, downloadFlags);
+            try {
+                // Download and extract audio
+                await this.ytDlp(url, downloadFlags);
+            } catch (extractError: any) {
+                console.error('[YouTubeAudioFetcher] Audio extraction failed:', extractError.message);
+
+                // If extraction fails (no FFmpeg), try downloading video and let OpenAI handle it
+                console.log('[YouTubeAudioFetcher] Falling back to video download...');
+                const videoFile = path.join(tempDir, `yt-video-${Date.now()}.mp4`);
+
+                await this.ytDlp(url, {
+                    output: videoFile,
+                    format: 'best[ext=mp4]/best',
+                    noWarnings: true,
+                    cookies: this.cookiesPath,
+                });
+
+                // Use video file instead
+                const videoSize = fs.statSync(videoFile).size;
+                console.log(`[YouTubeAudioFetcher] Video downloaded as fallback, size: ${videoSize} bytes`);
+
+                const videoStream = fs.createReadStream(videoFile);
+                console.log(`[YouTubeAudioFetcher] TEMP FILE KEPT FOR DEBUGGING: ${videoFile}`);
+                return videoStream;
+            }
 
             // Verify file exists
             if (!fs.existsSync(tempFile)) {
@@ -103,7 +128,7 @@ export class YouTubeAudioFetcher {
             }
 
             const fileSize = fs.statSync(tempFile).size;
-            console.log(`[YouTubeAudioFetcher] Audio downloaded, size: ${fileSize} bytes`);
+            console.log(`[YouTubeAudioFetcher] Audio extracted, size: ${fileSize} bytes`);
 
             // Read first bytes to detect format
             const fd = fs.openSync(tempFile, 'r');
@@ -111,7 +136,6 @@ export class YouTubeAudioFetcher {
             fs.readSync(fd, buffer, 0, 20, 0);
             fs.closeSync(fd);
             console.log(`[YouTubeAudioFetcher] File magic bytes (hex): ${buffer.toString('hex')}`);
-            console.log(`[YouTubeAudioFetcher] File magic bytes (ascii): ${buffer.toString('ascii').replace(/[^\x20-\x7E]/g, '.')}`);
 
             // Create a read stream from the temp file
             const audioStream = fs.createReadStream(tempFile);
