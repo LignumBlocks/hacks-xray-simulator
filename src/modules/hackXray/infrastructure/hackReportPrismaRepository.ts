@@ -28,7 +28,7 @@ export class HackReportPrismaRepository implements HackReportRepository {
 
         if (!record) return null;
 
-        return record.rawLabReport as LabReport;
+        return record.rawLabReport as unknown as LabReport;
     }
 
     async findManyWithFilters(filters: HackReportFilters): Promise<{ items: HackReportSummary[]; total: number }> {
