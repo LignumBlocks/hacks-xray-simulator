@@ -87,10 +87,20 @@ export class YouTubeAudioFetcher {
                 execFlags.cookies = this.cookiesPath;
             }
 
+            console.log('[YouTubeAudioFetcher] yt-dlp flags:', JSON.stringify(execFlags, null, 2));
+
             const subprocess = this.ytDlp.exec(url, execFlags);
 
             if (!subprocess.stdout) {
                 throw new Error('Failed to spawn yt-dlp process (no stdout)');
+            }
+
+            // DIAGNOSTIC: Log stderr to see what format yt-dlp actually selected
+            if (subprocess.stderr) {
+                subprocess.stderr.on('data', (data) => {
+                    const msg = data.toString();
+                    console.log('[YouTubeAudioFetcher] yt-dlp stderr:', msg);
+                });
             }
 
             return subprocess.stdout;

@@ -23,6 +23,50 @@ export class TranscriptionProvider {
             // However, the SDK often requires a filename.
 
             const stream: any = audioStream;
+
+            // DIAGNOSTIC: Log stream properties
+            console.log('[TranscriptionProvider] Stream properties:', {
+                path: stream.path,
+                readable: stream.readable,
+                readableObjectMode: stream.readableObjectMode,
+                constructor: stream.constructor?.name,
+            });
+
+            // DIAGNOSTIC: Read first few bytes to detect actual format
+            let firstChunk: Buffer | null = null;
+            const originalOn = stream.on.bind(stream);
+            stream.on = function (event: string, handler: any) {
+                if (event === 'data' && !firstChunk) {
+                    return originalOn('data', (chunk: Buffer) => {
+                        if (!firstChunk && chunk.length > 0) {
+                            firstChunk = chunk.slice(0, Math.min(20, chunk.length));
+                            console.log('[TranscriptionProvider] First bytes (hex):', firstChunk.toString('hex'));
+                            console.log('[TranscriptionProvider] First bytes (ascii):', firstChunk.toString('ascii').replace(/[^\x20-\x7E]/g, '.'));
+
+                            // Detect format from magic bytes
+                            const hex = firstChunk.toString('hex');
+                            if (hex.startsWith('fff1') || hex.startsWith('fff9')) {
+                                console.log('[TranscriptionProvider] Detected format: AAC/M4A');
+                            } else if (hex.startsWith('494433')) {
+                                console.log('[TranscriptionProvider] Detected format: MP3 (ID3)');
+                            } else if (hex.startsWith('fffb') || hex.startsWith('fff3')) {
+                                console.log('[TranscriptionProvider] Detected format: MP3');
+                            } else if (hex.startsWith('4f676753')) {
+                                console.log('[TranscriptionProvider] Detected format: OGG/Opus');
+                            } else if (hex.startsWith('1a45dfa3')) {
+                                console.log('[TranscriptionProvider] Detected format: WebM/Matroska');
+                            } else if (hex.includes('667479706d703432') || hex.includes('6674797069736f6d')) {
+                                console.log('[TranscriptionProvider] Detected format: MP4/M4A');
+                            } else {
+                                console.log('[TranscriptionProvider] Unknown format, hex:', hex);
+                            }
+                        }
+                        handler(chunk);
+                    });
+                }
+                return originalOn(event, handler);
+            };
+
             stream.path = 'audio.m4a'; // Mock filename for type detection (matches yt-dlp output format)
 
             const response = await this.openai.audio.transcriptions.create({
