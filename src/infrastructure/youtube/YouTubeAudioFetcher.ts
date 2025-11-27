@@ -84,7 +84,9 @@ export class YouTubeAudioFetcher {
 
             const execFlags: any = {
                 output: '-', // Stdout
-                format: 'bestaudio',
+                format: 'bestaudio[ext=m4a]/bestaudio', // Prefer M4A, fallback to best audio
+                extractAudio: true,
+                audioFormat: 'm4a',
                 noWarnings: true,
             };
 

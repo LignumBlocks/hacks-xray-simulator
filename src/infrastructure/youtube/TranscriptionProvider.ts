@@ -23,7 +23,7 @@ export class TranscriptionProvider {
             // However, the SDK often requires a filename.
 
             const stream: any = audioStream;
-            stream.path = 'audio.mp3'; // Mock filename for type detection
+            stream.path = 'audio.m4a'; // Mock filename for type detection (matches yt-dlp output format)
 
             const response = await this.openai.audio.transcriptions.create({
                 file: stream,
