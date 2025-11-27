@@ -84,7 +84,7 @@ export class YouTubeAudioFetcher {
 
             const downloadFlags: any = {
                 output: tempFile,
-                format: 'bestaudio/best',
+                format: 'bestaudio*', // Force audio-only with asterisk
                 noWarnings: true,
             };
 
@@ -105,21 +105,31 @@ export class YouTubeAudioFetcher {
             const fileSize = fs.statSync(tempFile).size;
             console.log(`[YouTubeAudioFetcher] Audio downloaded, size: ${fileSize} bytes`);
 
+            // Read first bytes to detect format
+            const fd = fs.openSync(tempFile, 'r');
+            const buffer = Buffer.alloc(20);
+            fs.readSync(fd, buffer, 0, 20, 0);
+            fs.closeSync(fd);
+            console.log(`[YouTubeAudioFetcher] File magic bytes (hex): ${buffer.toString('hex')}`);
+            console.log(`[YouTubeAudioFetcher] File magic bytes (ascii): ${buffer.toString('ascii').replace(/[^\x20-\x7E]/g, '.')}`);
+
             // Create a read stream from the temp file
             const audioStream = fs.createReadStream(tempFile);
 
-            // Clean up temp file after stream is consumed
-            audioStream.on('end', () => {
-                console.log(`[YouTubeAudioFetcher] Cleaning up temp file: ${tempFile}`);
-                fs.unlink(tempFile, (err) => {
-                    if (err) console.error(`[YouTubeAudioFetcher] Failed to delete temp file:`, err);
-                });
-            });
+            // DISABLED: Clean up temp file for debugging
+            // audioStream.on('end', () => {
+            //     console.log(`[YouTubeAudioFetcher] Cleaning up temp file: ${tempFile}`);
+            //     fs.unlink(tempFile, (err) => {
+            //         if (err) console.error(`[YouTubeAudioFetcher] Failed to delete temp file:`, err);
+            //     });
+            // });
 
-            audioStream.on('error', () => {
-                // Also clean up on error
-                fs.unlink(tempFile, () => { });
-            });
+            // audioStream.on('error', () => {
+            //     // Also clean up on error
+            //     fs.unlink(tempFile, () => {});
+            // });
+
+            console.log(`[YouTubeAudioFetcher] TEMP FILE KEPT FOR DEBUGGING: ${tempFile}`);
 
             return audioStream;
 
