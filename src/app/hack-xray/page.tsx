@@ -162,6 +162,19 @@ export default function HackXRayPage() {
                                 <div>
                                     <h2 className="text-2xl font-bold mb-1">{report.hackNormalized.title}</h2>
                                     <p className="text-slate-400 text-sm">{report.hackNormalized.shortSummary}</p>
+                                    {sourceLink && (
+                                        <a
+                                            href={sourceLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 mt-2 text-xs text-indigo-400 hover:text-indigo-300 underline"
+                                        >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                            </svg>
+                                            View Source
+                                        </a>
+                                    )}
                                 </div>
                                 <div className="text-right">
                                     <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${report.verdict.label === 'solid' || report.verdict.label === 'promising' ? 'bg-green-500 text-white' :

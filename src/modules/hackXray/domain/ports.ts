@@ -38,7 +38,7 @@ export type HackReportSummary = {
 
 export interface HackReportRepository {
     save(report: HackReportToSave): Promise<string>; // returns id
-    findById(id: string): Promise<LabReport | null>;
+    findById(id: string): Promise<{ report: LabReport; sourceLink?: string | null } | null>;
     findManyWithFilters(filters: HackReportFilters): Promise<{
         items: HackReportSummary[];
         total: number;

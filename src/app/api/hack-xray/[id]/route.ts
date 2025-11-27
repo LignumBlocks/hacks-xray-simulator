@@ -9,16 +9,19 @@ export async function GET(
         const { id } = await params;
 
         const repository = new HackReportPrismaRepository();
-        const report = await repository.findById(id);
+        const result = await repository.findById(id);
 
-        if (!report) {
+        if (!result) {
             return NextResponse.json(
                 { errorCode: 'NOT_FOUND', message: 'Report not found' },
                 { status: 404 }
             );
         }
 
-        return NextResponse.json({ labReport: report });
+        return NextResponse.json({
+            labReport: result.report,
+            sourceLink: result.sourceLink
+        });
     } catch (error: any) {
         console.error('GET /api/hack-xray/:id Error:', error);
         return NextResponse.json(

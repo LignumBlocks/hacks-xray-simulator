@@ -21,14 +21,17 @@ export class HackReportPrismaRepository implements HackReportRepository {
         return record.id;
     }
 
-    async findById(id: string): Promise<LabReport | null> {
+    async findById(id: string): Promise<{ report: LabReport; sourceLink?: string | null } | null> {
         const record = await prisma.hackReport.findUnique({
             where: { id },
         });
 
         if (!record) return null;
 
-        return record.rawLabReport as unknown as LabReport;
+        return {
+            report: record.rawLabReport as unknown as LabReport,
+            sourceLink: record.sourceLink
+        };
     }
 
     async findManyWithFilters(filters: HackReportFilters): Promise<{ items: HackReportSummary[]; total: number }> {
