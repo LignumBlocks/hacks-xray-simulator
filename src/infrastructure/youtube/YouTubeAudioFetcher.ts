@@ -75,18 +75,11 @@ export class YouTubeAudioFetcher {
 
             console.log(`[YouTubeAudioFetcher] Downloading audio stream...`);
 
-            // yt-dlp-exec doesn't easily return a stream directly from the wrapper in a way that is easy to pipe to OpenAI
-            // (it spawns a process). 
-            // However, we can use the 'exec' capability or just spawn it ourselves if we want a stream.
-            // But yt-dlp-exec is a wrapper that returns a promise.
-            // To get a stream, we can use the `exec` method from the package or just use `child_process` with the binary path provided by the package.
-            // Actually, yt-dlp-exec exports a function `exec` that returns a ChildProcess.
-
+            // Use format 140 which is M4A audio that YouTube always has available
+            // This avoids format conversion issues and works without FFmpeg
             const execFlags: any = {
                 output: '-', // Stdout
-                format: 'bestaudio[ext=m4a]/bestaudio', // Prefer M4A, fallback to best audio
-                extractAudio: true,
-                audioFormat: 'm4a',
+                format: '140/bestaudio[ext=m4a]/bestaudio', // Format 140 = M4A, fallback to best M4A, then any
                 noWarnings: true,
             };
 
