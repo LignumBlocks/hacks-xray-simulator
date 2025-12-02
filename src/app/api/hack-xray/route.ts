@@ -56,6 +56,25 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const validated = schema.parse(body);
 
+        // Instantiate repository
+        const hackReportRepository = new HackReportPrismaRepository();
+
+        // 0. Deduplication Check (Early Exit)
+        if (validated.sourceLink) {
+            try {
+                const existing = await hackReportRepository.findBySourceLink(validated.sourceLink);
+                if (existing) {
+                    console.log(`[HackXRay API] Found existing report for ${validated.sourceLink}, returning immediately.`);
+                    return NextResponse.json({
+                        id: existing.id,
+                        labReport: existing.report
+                    });
+                }
+            } catch (error) {
+                console.warn('[HackXRay API] Failed to check for existing report:', error);
+            }
+        }
+
         let finalHackText = validated.hackText;
         let transcriptionMeta = null;
         let extractedFromVideo = false;
@@ -136,9 +155,6 @@ export async function POST(req: NextRequest) {
         } else {
             llmClient = new HackXRayOpenAILLMClient();
         }
-
-        // Instantiate repository
-        const hackReportRepository = new HackReportPrismaRepository();
 
         // Prepare input for use case
         const useCaseInput = {

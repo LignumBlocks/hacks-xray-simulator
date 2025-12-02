@@ -23,6 +23,20 @@ export async function runHackXRayUseCase(
 ): Promise<HackXRayOutput> {
     const country = input.country || 'US';
 
+    // 0. Check for existing report (Deduplication)
+    if (input.sourceLink) {
+        try {
+            const existing = await deps.hackReportRepository.findBySourceLink(input.sourceLink);
+            if (existing) {
+                console.log(`[HackXRay] Found existing report for ${input.sourceLink}, skipping analysis.`);
+                return { id: existing.id, labReport: existing.report };
+            }
+        } catch (error) {
+            console.warn('[HackXRay] Failed to check for existing report:', error);
+            // Continue with analysis if check fails
+        }
+    }
+
     // 1. Call LLM
     const report = await deps.llmClient.generateLabReport(input.hackText, country);
 

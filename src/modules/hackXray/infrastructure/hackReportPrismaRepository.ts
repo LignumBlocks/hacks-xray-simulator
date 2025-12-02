@@ -37,6 +37,21 @@ export class HackReportPrismaRepository implements HackReportRepository {
         };
     }
 
+    async findBySourceLink(url: string): Promise<{ id: string; report: LabReport } | null> {
+        // Find the most recent report for this URL
+        const record = await prisma.hackReport.findFirst({
+            where: { sourceLink: url },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        if (!record) return null;
+
+        const raw = record.rawLabReport as any;
+        const report = this.adaptToV2(raw);
+
+        return { id: record.id, report };
+    }
+
     async findManyWithFilters(filters: HackReportFilters): Promise<{ items: HackReportSummary[]; total: number }> {
         const { page, pageSize, ...whereFilters } = filters;
 

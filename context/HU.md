@@ -109,17 +109,19 @@ Cada HU sigue el formato:
 
 ---
 
-### HU06 – Incluir disclaimers y tono prudente en el Lab Report
+### HU06 – Estandarizar Esquema Interno del HackReport (LabReport V2)
 
-**Como** usuario en dominio YMYL,  
-**quiero** disclaimers claros,  
-**para** entender que el resultado es educativo.
+**Como** arquitecto de software,
+**quiero** estandarizar la estructura del `LabReport` a una versión 2.0 con tipos estrictos,
+**para** asegurar la consistencia de los datos, facilitar la integración con nuevas herramientas y mejorar la mantenibilidad.
 
-**Criterios de aceptación**  
-- `educational_only = true` y `must_show_disclaimer = true`.
-- Texto de advertencia visible en UI.
-- Prohibidas frases como “guaranteed”, “risk-free”, etc.
-- Tests detectan palabras prohibidas.
+**Criterios de aceptación**
+- Definir `LabReportV2` con nuevos campos: `adherence`, `recommendedProfiles`, `notForProfiles`, `systemQuirkLoophole` extendido.
+- Migrar enums a tipos literales estrictos (`LegalLabel`, `AdherenceLevel`, `VerdictLabel`).
+- Actualizar el prompt del LLM para generar el nuevo esquema.
+- Implementar lógica de adaptación (fallback) para reportes legacy (V1 -> V2) en lectura.
+- Actualizar UI para mostrar los nuevos campos.
+- Asegurar que `meta.version` sea "2.0".
 
 ---
 
