@@ -8,27 +8,20 @@ export enum HackType {
     Unknown = 'unknown',
 }
 
-export enum VerdictLabel {
-    Trash = 'trash',
-    WorksOnlyIf = 'works_only_if',
-    Solid = 'solid',
-    Promising = 'promising',
-    GameChanger = 'game_changer',
-}
+export type LegalLabel = "clean" | "gray_area" | "red_flag";
 
-export enum LegalityComplianceLabel {
-    Clean = 'clean',
-    GrayArea = 'gray_area',
-    RedFlag = 'red_flag',
-    Illegal = 'illegal',
-}
+export type AdherenceLevel =
+    | "easy"
+    | "intermediate"
+    | "advanced"
+    | "expert";
 
-export enum RiskLevel {
-    Low = 'low',
-    Medium = 'medium',
-    High = 'high',
-    Critical = 'critical',
-}
+export type VerdictLabel =
+    | "trash"
+    | "dangerous_for_most"
+    | "works_if_profile_matches"
+    | "promising_superhack_part"
+    | "solid";
 
 export interface LabReport {
     meta: {
@@ -36,27 +29,42 @@ export interface LabReport {
         language: string;
         country: string;
     };
+
     hackNormalized: {
         title: string;
         shortSummary: string;
         detailedSummary: string;
-        hackType: string; // Can validate against HackType enum
+        hackType: string;
         primaryCategory: string;
     };
+
     evaluationPanel: {
         legalityCompliance: {
-            label: string; // Can validate against LegalityComplianceLabel enum
+            label: LegalLabel;
             notes: string;
         };
         mathRealImpact: { score0to10: number };
         riskFragility: { score0to10: number };
         practicalityFriction: { score0to10: number };
-        systemQuirkLoophole: { usesSystemQuirk: boolean };
+        systemQuirkLoophole: {
+            usesSystemQuirk: boolean;
+            description?: string;
+            fragilityNotes?: string[];
+        };
     };
+
+    adherence: {
+        level: AdherenceLevel;
+        notes: string;
+    };
+
     verdict: {
-        label: string; // Can validate against VerdictLabel enum
+        label: VerdictLabel;
         headline: string;
+        recommendedProfiles: string[];
+        notForProfiles: string[];
     };
+
     keyPoints: {
         keyRisks: string[];
     };
@@ -75,15 +83,13 @@ export function validateLabReport(report: LabReport): void {
     validateScore(report.evaluationPanel.riskFragility.score0to10, 'Risk & Fragility');
     validateScore(report.evaluationPanel.practicalityFriction.score0to10, 'Practicality & Friction');
 
-    // Business Rule: If Red Flag or Illegal, Verdict cannot be Promising or Game Changer
+    // Business Rule: If Red Flag, Verdict cannot be Solid or Promising
     const legality = report.evaluationPanel.legalityCompliance.label;
     const verdict = report.verdict.label;
 
     if (
-        (legality === LegalityComplianceLabel.RedFlag ||
-            legality === LegalityComplianceLabel.Illegal) &&
-        (verdict === VerdictLabel.Promising ||
-            verdict === VerdictLabel.GameChanger)
+        legality === 'red_flag' &&
+        (verdict === 'solid' || verdict === 'promising_superhack_part')
     ) {
         throw new HackXRayValidationError(
             `Cannot mark report as ${verdict} if legality is ${legality}`

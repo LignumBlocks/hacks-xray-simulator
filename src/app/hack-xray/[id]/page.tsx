@@ -91,11 +91,11 @@ export default function HackReportDetailPage() {
                                 )}
                             </div>
                             <div className="text-right">
-                                <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${report.verdict.label === 'solid' || report.verdict.label === 'promising'
-                                    ? 'bg-green-500 text-white'
-                                    : report.verdict.label === 'trash'
-                                        ? 'bg-red-500 text-white'
-                                        : 'bg-yellow-500 text-white'
+                                <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${report.verdict.label === 'solid' || report.verdict.label === 'promising_superhack_part'
+                                        ? 'bg-green-500 text-white'
+                                        : report.verdict.label === 'trash' || report.verdict.label === 'dangerous_for_most'
+                                            ? 'bg-red-500 text-white'
+                                            : 'bg-yellow-500 text-white'
                                     }`}>
                                     {report.verdict.label.replace(/_/g, ' ')}
                                 </span>
@@ -104,16 +104,97 @@ export default function HackReportDetailPage() {
                     </div>
 
                     {/* Body */}
-                    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* Scores */}
-                        <div>
-                            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Scores</h3>
-                            <div className="space-y-4">
-                                <ScoreBar label="Math & Real Impact" score={report.evaluationPanel.mathRealImpact.score0to10} />
-                                <ScoreBar label="Risk & Fragility" score={report.evaluationPanel.riskFragility.score0to10} inverse />
-                                <ScoreBar label="Practicality" score={report.evaluationPanel.practicalityFriction.score0to10} />
+                    <div className="p-6 space-y-8">
+                        {/* Verdict Headline */}
+                        <div className="text-center">
+                            <p className="text-lg font-semibold text-slate-800">{report.verdict.headline}</p>
+                        </div>
+
+                        {/* Scores and Adherence */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* Scores */}
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Scores</h3>
+                                <div className="space-y-4">
+                                    <ScoreBar label="Math & Real Impact" score={report.evaluationPanel.mathRealImpact.score0to10} />
+                                    <ScoreBar label="Risk & Fragility" score={report.evaluationPanel.riskFragility.score0to10} inverse />
+                                    <ScoreBar label="Practicality" score={report.evaluationPanel.practicalityFriction.score0to10} />
+                                </div>
+                            </div>
+
+                            {/* Adherence */}
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Adherence Level</h3>
+                                <div className="bg-slate-50 rounded-lg p-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase ${report.adherence.level === 'easy' ? 'bg-green-100 text-green-700' :
+                                                report.adherence.level === 'intermediate' ? 'bg-blue-100 text-blue-700' :
+                                                    report.adherence.level === 'advanced' ? 'bg-orange-100 text-orange-700' :
+                                                        'bg-red-100 text-red-700'
+                                            }`}>
+                                            {report.adherence.level}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-slate-600">{report.adherence.notes}</p>
+                                </div>
                             </div>
                         </div>
+
+                        {/* Profiles */}
+                        {(report.verdict.recommendedProfiles.length > 0 || report.verdict.notForProfiles.length > 0) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                {/* Recommended For */}
+                                {report.verdict.recommendedProfiles.length > 0 && (
+                                    <div>
+                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">✓ Recommended For</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {report.verdict.recommendedProfiles.map((profile, i) => (
+                                                <span key={i} className="inline-block px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                                                    {profile}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Not For */}
+                                {report.verdict.notForProfiles.length > 0 && (
+                                    <div>
+                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">✗ Not For</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {report.verdict.notForProfiles.map((profile, i) => (
+                                                <span key={i} className="inline-block px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                                                    {profile}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* System Quirk/Loophole */}
+                        {report.evaluationPanel.systemQuirkLoophole.usesSystemQuirk && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                                <h3 className="text-sm font-bold text-amber-800 uppercase tracking-wider mb-2">⚠️ System Quirk/Loophole</h3>
+                                {report.evaluationPanel.systemQuirkLoophole.description && (
+                                    <p className="text-sm text-amber-900 mb-2">{report.evaluationPanel.systemQuirkLoophole.description}</p>
+                                )}
+                                {report.evaluationPanel.systemQuirkLoophole.fragilityNotes && report.evaluationPanel.systemQuirkLoophole.fragilityNotes.length > 0 && (
+                                    <div>
+                                        <p className="text-xs font-semibold text-amber-800 mb-1">Fragility Notes:</p>
+                                        <ul className="space-y-1">
+                                            {report.evaluationPanel.systemQuirkLoophole.fragilityNotes.map((note, i) => (
+                                                <li key={i} className="text-xs text-amber-900 flex items-start">
+                                                    <span className="mr-2">•</span>
+                                                    {note}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Key Risks */}
                         <div>
