@@ -1,6 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { HackXRayLLMClient } from '../domain/ports';
-import { LabReport } from '../domain/labReport';
+import {
+  LabReport,
+  LegalLabel,
+  AdherenceLevel,
+  VerdictLabel,
+} from '../domain/labReport';
 import { HackXRayLLMOutputError } from '../domain/errors';
 
 // Helper para extraer y "reparar" el JSON principal de la respuesta del modelo
@@ -70,8 +75,34 @@ function extractAndRepairJson(raw: string): string {
   return candidate;
 }
 
+function asLegalLabel(val: any): LegalLabel {
+  const valid: LegalLabel[] = ['clean', 'gray_area', 'red_flag'];
+  return valid.includes(val) ? val : 'gray_area';
+}
+
+function asAdherenceLevel(val: any): AdherenceLevel {
+  const valid: AdherenceLevel[] = [
+    'easy',
+    'intermediate',
+    'advanced',
+    'expert',
+  ];
+  return valid.includes(val) ? val : 'intermediate';
+}
+
+function asVerdictLabel(val: any): VerdictLabel {
+  const valid: VerdictLabel[] = [
+    'trash',
+    'dangerous_for_most',
+    'works_if_profile_matches',
+    'promising_superhack_part',
+    'solid',
+  ];
+  return valid.includes(val) ? val : 'works_if_profile_matches';
+}
+
 // Normaliza el objeto parseado para asegurar que cumple el shape de LabReport
-function normalizeLabReport(parsed: any, country: string): LabReport {
+export function normalizeLabReport(parsed: any, country: string): LabReport {
   const meta = parsed?.meta ?? {};
   const hackNormalized = parsed?.hackNormalized ?? {};
   const evaluationPanel = parsed?.evaluationPanel ?? {};
@@ -80,12 +111,13 @@ function normalizeLabReport(parsed: any, country: string): LabReport {
   const riskFragility = evaluationPanel?.riskFragility ?? {};
   const practicalityFriction = evaluationPanel?.practicalityFriction ?? {};
   const systemQuirkLoophole = evaluationPanel?.systemQuirkLoophole ?? {};
+  const adherence = parsed?.adherence ?? {};
   const verdict = parsed?.verdict ?? {};
   const keyPoints = parsed?.keyPoints ?? {};
 
   const normalized: LabReport = {
     meta: {
-      version: meta.version ?? '1.0',
+      version: '2.0',
       language: meta.language ?? 'en',
       country: meta.country ?? country,
     },
@@ -98,19 +130,13 @@ function normalizeLabReport(parsed: any, country: string): LabReport {
         hackNormalized.detailedSummary ??
         'No detailed summary provided by the model.',
       // Si el modelo devuelve algo raro, caemos a "unknown"
-      hackType:
-        hackNormalized.hackType ??
-        'unknown',
-      primaryCategory:
-        hackNormalized.primaryCategory ??
-        'General',
+      hackType: hackNormalized.hackType ?? 'unknown',
+      primaryCategory: hackNormalized.primaryCategory ?? 'General',
     },
     evaluationPanel: {
       legalityCompliance: {
         // defaults seguros
-        label:
-          legalityCompliance.label ??
-          'gray_area',
+        label: asLegalLabel(legalityCompliance.label),
         notes:
           legalityCompliance.notes ??
           'Model did not provide detailed legality notes.',
@@ -138,20 +164,30 @@ function normalizeLabReport(parsed: any, country: string): LabReport {
           typeof systemQuirkLoophole.usesSystemQuirk === 'boolean'
             ? systemQuirkLoophole.usesSystemQuirk
             : false,
+        description: systemQuirkLoophole.description,
+        fragilityNotes: Array.isArray(systemQuirkLoophole.fragilityNotes)
+          ? systemQuirkLoophole.fragilityNotes
+          : [],
       },
     },
+    adherence: {
+      level: asAdherenceLevel(adherence.level),
+      notes: adherence.notes ?? 'No adherence notes provided.',
+    },
     verdict: {
-      label:
-        verdict.label ??
-        'works_only_if', // valor por defecto razonable
+      label: asVerdictLabel(verdict.label),
       headline:
-        verdict.headline ??
-        'Model did not provide a verdict headline.',
+        verdict.headline ?? 'Model did not provide a verdict headline.',
+      recommendedProfiles: Array.isArray(verdict.recommendedProfiles)
+        ? verdict.recommendedProfiles
+        : [],
+      notForProfiles: Array.isArray(verdict.notForProfiles)
+        ? verdict.notForProfiles
+        : [],
     },
     keyPoints: {
       keyRisks:
-        Array.isArray(keyPoints.keyRisks) &&
-          keyPoints.keyRisks.length > 0
+        Array.isArray(keyPoints.keyRisks) && keyPoints.keyRisks.length > 0
           ? keyPoints.keyRisks
           : ['Model did not explicitly list key risks.'],
     },
@@ -167,7 +203,7 @@ function buildFallbackLabReport(hackText: string, country: string): LabReport {
 
   const skeleton = {
     meta: {
-      version: '1.0',
+      version: '2.0',
       language: 'en',
       country,
     },
@@ -191,9 +227,15 @@ function buildFallbackLabReport(hackText: string, country: string): LabReport {
       practicalityFriction: { score0to10: 5 },
       systemQuirkLoophole: { usesSystemQuirk: false },
     },
+    adherence: {
+      level: 'intermediate',
+      notes: 'Analysis failed, adherence unknown.',
+    },
     verdict: {
-      label: 'works_only_if',
+      label: 'works_if_profile_matches',
       headline: 'No reliable AI verdict available for this hack',
+      recommendedProfiles: [],
+      notForProfiles: [],
     },
     keyPoints: {
       keyRisks: [
@@ -216,7 +258,10 @@ export class HackXRayGeminiLLMClient implements HackXRayLLMClient {
     this.genAI = new GoogleGenerativeAI(apiKey);
   }
 
-  async generateLabReport(hackText: string, country: string): Promise<LabReport> {
+  async generateLabReport(
+    hackText: string,
+    country: string
+  ): Promise<LabReport> {
     const systemPrompt = `
 You are Hintsly Hack X-Ray, an expert financial analyst AI.
 Your goal is to analyze a "money hack" and generate a structured Lab Report.
@@ -227,7 +272,7 @@ You MUST output a valid JSON object with this shape (this is an EXAMPLE, not lit
 
 {
   "meta": {
-    "version": "1.0",
+    "version": "2.0",
     "language": "en",
     "country": "${country}"
   },
@@ -246,16 +291,31 @@ You MUST output a valid JSON object with this shape (this is an EXAMPLE, not lit
     "mathRealImpact": { "score0to10": 7 },
     "riskFragility": { "score0to10": 6 },
     "practicalityFriction": { "score0to10": 4 },
-    "systemQuirkLoophole": { "usesSystemQuirk": true }
+    "systemQuirkLoophole": {
+      "usesSystemQuirk": true,
+      "description": "Explanation of the loophole",
+      "fragilityNotes": ["Note 1", "Note 2"]
+    }
+  },
+  "adherence": {
+    "level": "intermediate",
+    "notes": "Why it is this level"
   },
   "verdict": {
     "label": "solid",
-    "headline": "Punchy verdict headline"
+    "headline": "Punchy verdict headline",
+    "recommendedProfiles": ["Students", "Freelancers"],
+    "notForProfiles": ["Retirees"]
   },
   "keyPoints": {
     "keyRisks": ["Risk 1", "Risk 2", "Risk 3"]
   }
 }
+
+Enums:
+- legalityCompliance.label: "clean", "gray_area", "red_flag"
+- adherence.level: "easy", "intermediate", "advanced", "expert"
+- verdict.label: "trash", "dangerous_for_most", "works_if_profile_matches", "promising_superhack_part", "solid"
 
 Rules:
 - All fields above MUST be present in the JSON.
@@ -278,7 +338,7 @@ Rules:
             responseMimeType: 'application/json', // Force JSON output
           },
         },
-        { apiVersion: 'v1beta' }, // Use v1beta for gemini-2.0
+        { apiVersion: 'v1beta' } // Use v1beta for gemini-2.0
       );
 
       const result = await model.generateContent({
@@ -296,10 +356,13 @@ Rules:
       // ⚠️ Caso problemático: a veces viene vacío aunque haya candidates
       if (!text) {
         console.warn(
-          'Gemini returned empty text(). Building fallback LabReport instead of throwing.',
+          'Gemini returned empty text(). Building fallback LabReport instead of throwing.'
         );
         // Opcional: loguear candidates para investigar más tarde
-        console.log('Gemini raw response object:', JSON.stringify(response, null, 2));
+        console.log(
+          'Gemini raw response object:',
+          JSON.stringify(response, null, 2)
+        );
         return buildFallbackLabReport(hackText, country);
       }
 
@@ -321,7 +384,7 @@ Rules:
           'Failed to parse JSON from model response:',
           e,
           'jsonCandidate:',
-          jsonCandidate,
+          jsonCandidate
         );
         // Igual: si el JSON viene roto, devolvemos fallback
         return buildFallbackLabReport(hackText, country);

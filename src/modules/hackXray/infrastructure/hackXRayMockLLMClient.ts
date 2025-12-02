@@ -13,7 +13,7 @@ export class HackXRayMockLLMClient implements HackXRayLLMClient {
 
         return {
             meta: {
-                version: '1.0',
+                version: '2.0',
                 language: 'en',
                 country: country,
             },
@@ -32,15 +32,25 @@ export class HackXRayMockLLMClient implements HackXRayLLMClient {
                 mathRealImpact: { score0to10: isCreditCard ? 8 : isTravel ? 7 : 6 },
                 riskFragility: { score0to10: isRisky ? 7 : 3 },
                 practicalityFriction: { score0to10: isCreditCard ? 8 : 6 },
-                systemQuirkLoophole: { usesSystemQuirk: isRisky },
+                systemQuirkLoophole: {
+                    usesSystemQuirk: isRisky,
+                    description: isRisky ? 'Relies on a specific loophole.' : undefined,
+                    fragilityNotes: isRisky ? ['Could be patched soon.'] : [],
+                },
+            },
+            adherence: {
+                level: isRisky ? 'expert' : 'intermediate',
+                notes: 'Mock adherence notes.',
             },
             verdict: {
-                label: isRisky ? 'works_only_if' : isCreditCard ? 'solid' : 'promising',
+                label: isRisky ? 'works_if_profile_matches' : isCreditCard ? 'solid' : 'promising_superhack_part',
                 headline: isRisky
                     ? 'Works only if you follow the rules carefully'
                     : isCreditCard
                         ? 'Solid strategy for maximizing rewards'
                         : 'Promising approach worth exploring',
+                recommendedProfiles: ['Students', 'Digital Nomads'],
+                notForProfiles: ['Retirees'],
             },
             keyPoints: {
                 keyRisks: isRisky

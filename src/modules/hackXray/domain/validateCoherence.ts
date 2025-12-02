@@ -1,5 +1,5 @@
 import { LLMOutputIncoherentError } from './errors';
-import { LabReport, LegalityComplianceLabel, VerdictLabel } from './labReport';
+import { LabReport } from './labReport';
 
 /**
  * Validates coherence between evaluation panel scores and verdict
@@ -14,21 +14,20 @@ export function validateCoherence(report: LabReport): void {
     const practicality = evaluationPanel.practicalityFriction.score0to10;
     const usesQuirk = evaluationPanel.systemQuirkLoophole.usesSystemQuirk;
 
-    // Rule 1: red_flag or illegal legality → cannot have positive verdict
+    // Rule 1: red_flag legality → cannot have positive verdict
     if (
-        (legality === LegalityComplianceLabel.RedFlag || legality === LegalityComplianceLabel.Illegal) &&
-        (verdictLabel === VerdictLabel.Solid ||
-            verdictLabel === VerdictLabel.Promising ||
-            verdictLabel === VerdictLabel.GameChanger ||
-            verdictLabel === VerdictLabel.WorksOnlyIf)
+        legality === 'red_flag' &&
+        (verdictLabel === 'solid' ||
+            verdictLabel === 'promising_superhack_part' ||
+            verdictLabel === 'works_if_profile_matches')
     ) {
         throw new LLMOutputIncoherentError(
-            `Inconsistent: legality is "${legality}" but verdict is "${verdictLabel}". Red flag/illegal hacks cannot have positive verdicts.`
+            `Inconsistent: legality is "${legality}" but verdict is "${verdictLabel}". Red flag hacks cannot have positive verdicts.`
         );
     }
 
     // Rule 2: High risk (>=7) + Low impact (<=3) → must be trash
-    if (risk >= 7 && impact <= 3 && verdictLabel !== VerdictLabel.Trash) {
+    if (risk >= 7 && impact <= 3 && verdictLabel !== 'trash') {
         throw new LLMOutputIncoherentError(
             `Inconsistent: high risk (${risk}) with low impact (${impact}) must have "trash" verdict, got "${verdictLabel}".`
         );
@@ -37,7 +36,7 @@ export function validateCoherence(report: LabReport): void {
     // Rule 3: Very low practicality (<=2) → cannot have positive verdict
     if (
         practicality <= 2 &&
-        verdictLabel !== VerdictLabel.Trash
+        verdictLabel !== 'trash'
     ) {
         throw new LLMOutputIncoherentError(
             `Inconsistent: very low practicality (${practicality}) must have "trash" verdict, got "${verdictLabel}".`
@@ -47,10 +46,9 @@ export function validateCoherence(report: LabReport): void {
     // Rule 4: System quirk + gray area → cannot have positive verdict
     if (
         usesQuirk &&
-        legality === LegalityComplianceLabel.GrayArea &&
-        (verdictLabel === VerdictLabel.Solid ||
-            verdictLabel === VerdictLabel.Promising ||
-            verdictLabel === VerdictLabel.GameChanger)
+        legality === 'gray_area' &&
+        (verdictLabel === 'solid' ||
+            verdictLabel === 'promising_superhack_part')
     ) {
         throw new LLMOutputIncoherentError(
             `Inconsistent: system quirk with gray area legality cannot have positive verdict "${verdictLabel}".`

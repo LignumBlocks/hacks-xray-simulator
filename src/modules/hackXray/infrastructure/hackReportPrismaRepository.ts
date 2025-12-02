@@ -28,8 +28,11 @@ export class HackReportPrismaRepository implements HackReportRepository {
 
         if (!record) return null;
 
+        const raw = record.rawLabReport as any;
+        const report = this.adaptToV2(raw);
+
         return {
-            report: record.rawLabReport as unknown as LabReport,
+            report,
             sourceLink: record.sourceLink
         };
     }
@@ -84,5 +87,46 @@ export class HackReportPrismaRepository implements HackReportRepository {
         }));
 
         return { items, total };
+    }
+
+    private adaptToV2(raw: any): LabReport {
+        // If it's already V2, return as is (assuming it's valid)
+        if (raw?.meta?.version === '2.0') {
+            return raw as LabReport;
+        }
+
+        // Adapt V1 (or unknown) to V2
+        const adapted: LabReport = {
+            ...raw,
+            meta: {
+                ...raw.meta,
+                version: '2.0 (Legacy Adapted)',
+            },
+            evaluationPanel: {
+                ...raw.evaluationPanel,
+                legalityCompliance: {
+                    ...raw.evaluationPanel?.legalityCompliance,
+                    // Map old enums if necessary, or assume they are compatible strings
+                    label: raw.evaluationPanel?.legalityCompliance?.label || 'gray_area',
+                },
+                systemQuirkLoophole: {
+                    ...raw.evaluationPanel?.systemQuirkLoophole,
+                    // New optional fields can be undefined
+                }
+            },
+            adherence: {
+                level: 'intermediate', // Default for legacy
+                notes: 'Legacy report: Adherence not analyzed.',
+            },
+            verdict: {
+                ...raw.verdict,
+                // Map old enums if necessary
+                label: raw.verdict?.label || 'works_if_profile_matches',
+                recommendedProfiles: [],
+                notForProfiles: [],
+            },
+        };
+
+        return adapted;
     }
 }
