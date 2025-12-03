@@ -5,6 +5,8 @@ import { HackXRayOpenAILLMClient } from '@/modules/hackXray/infrastructure/hackX
 import { HackXRayGeminiLLMClient } from '@/modules/hackXray/infrastructure/hackXRayGeminiLLMClient';
 import { HackXRayMockLLMClient } from '@/modules/hackXray/infrastructure/hackXRayMockLLMClient';
 import { HackReportPrismaRepository } from '@/modules/hackXray/infrastructure/hackReportPrismaRepository';
+import { XRayEventPrismaRepository } from '@/modules/hackXray/infrastructure/xrayEventPrismaRepository';
+import { hashClientIp } from '@/modules/hackXray/domain/xrayEventService';
 import {
     HackXRayValidationError,
     HackXRayLLMOutputError,
@@ -56,8 +58,14 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const validated = schema.parse(body);
 
-        // Instantiate repository
+        // Instantiate repositories
         const hackReportRepository = new HackReportPrismaRepository();
+        const xrayEventRepository = new XRayEventPrismaRepository();
+
+        // Extract client IP and user agent for HU07
+        const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('x-real-ip') || undefined;
+        const clientIpHash = hashClientIp(clientIp);
+        const userAgent = req.headers.get('user-agent') || undefined;
 
         // 0. Deduplication Check (Early Exit)
         if (validated.sourceLink) {
@@ -160,9 +168,15 @@ export async function POST(req: NextRequest) {
         const useCaseInput = {
             ...validated,
             hackText: finalHackText,
+            clientIpHash,
+            userAgent,
         };
 
-        const result = await runHackXRayUseCase(useCaseInput, { llmClient, hackReportRepository });
+        const result = await runHackXRayUseCase(useCaseInput, {
+            llmClient,
+            hackReportRepository,
+            xrayEventRepository
+        });
 
         // TODO: We might want to save the transcription meta in the report, but runHackXRayUseCase might not support it yet.
         // For now, we just run the use case with the extracted text.

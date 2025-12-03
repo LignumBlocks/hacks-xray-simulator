@@ -30,4 +30,38 @@ model HackReport {
   @@index([createdAt])
   @@index([hackType])
   @@index([verdictLabel])
+
+  // Relation to XRayEvents
+  xrayEvents      XRayEvent[]
+}
+
+model XRayEvent {
+  id                      String   @id @default(uuid())
+  reportId                String
+  report                  HackReport @relation(fields: [reportId], references: [id])
+  
+  submittedAt             DateTime
+  sourceType              String   // "url" | "text"
+  sourceHost              String?
+  country                 String
+  clientIpHash            String?
+  userAgent               String?
+  
+  // Snapshots for analytics
+  verdictLabel            String
+  legalityLabel           String
+  mathScore0to10          Int
+  riskScore0to10          Int
+  practicalityScore0to10  Int
+  primaryCategory         String?
+  adherenceLevel          String?
+  
+  createdAt               DateTime @default(now())
+
+  @@index([reportId])
+  @@index([verdictLabel])
+  @@index([sourceHost])
+  @@index([country])
+  @@index([createdAt])
+  @@map("xray_events")
 }
