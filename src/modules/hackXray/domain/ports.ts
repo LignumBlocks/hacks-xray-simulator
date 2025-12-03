@@ -81,6 +81,23 @@ export interface BasicXRayStats {
         from?: string;
         to?: string;
     };
+    // V2 fields
+    timeSeries: TimeBucket[];
+    adherenceDistribution: DistributionItem[];
+    categoryDistribution: DistributionItem[];
+}
+
+export interface TimeBucket {
+    bucketStart: string; // ISO date
+    totalEvents: number;
+    avgMathScore0to10: number;
+    avgRiskScore0to10: number;
+    avgPracticalityScore0to10: number;
+}
+
+export interface DistributionItem {
+    label: string;
+    count: number;
 }
 
 export interface XRayEventRepository {
@@ -88,5 +105,9 @@ export interface XRayEventRepository {
     getBasicStats(params: {
         from?: Date;
         to?: Date;
+        country?: string;
+        sourceHost?: string;
+        verdictLabel?: string;
+        primaryCategory?: string;
     }): Promise<BasicXRayStats>;
 }
