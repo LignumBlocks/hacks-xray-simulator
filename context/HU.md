@@ -125,6 +125,37 @@ Cada HU sigue el formato:
 
 ---
 
+### HU07 – Logging XRay Events & Métricas Básicas
+
+**Como** administrador de Hintsly,
+**quiero** registrar cada ejecución del X-Ray con métricas detalladas,
+**para** medir el uso real, detectar patrones y optimizar el sistema.
+
+**Criterios de aceptación**
+- Crear tabla `xray_events` con FK a `HackReport`.
+- Registrar: timestamp, fuente, país, IP hash, user agent, scores, veredicto, adherencia.
+- Endpoint `/api/admin/xray/stats/basic` para métricas agregadas.
+- Logging asíncrono (fire-and-forget) que no bloquee el flujo principal.
+- Hash SHA-256 de IPs con salt para privacidad.
+
+---
+
+### HU08 – Analytics V2: Trends y Filtros Avanzados
+
+**Como** administrador de Hintsly,
+**quiero** visualizar tendencias temporales y filtrar estadísticas del X-Ray,
+**para** comprender la evolución del uso y priorizar mejoras.
+
+**Criterios de aceptación**
+- Time series de eventos y scores por día.
+- Distribución de adherencia (easy/intermediate/advanced/expert).
+- Distribución de categorías (top 10).
+- Filtros: fecha, país, host, veredicto, categoría.
+- Dashboard con gráficos interactivos (Recharts).
+- Sin cambios al esquema de BD.
+
+---
+
 ## Fase 2 – Score & Debt SuperHack Simulator
 
 ### HU07 – Ingresar datos básicos para simular rutas
