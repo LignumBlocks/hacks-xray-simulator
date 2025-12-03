@@ -21,9 +21,14 @@ export async function POST(req: NextRequest) {
         const response = NextResponse.json({ success: true });
 
         // Set cookie
+        // In production, cookies should be secure (HTTPS only).
+        // However, if the VPS is behind a proxy handling SSL or just testing on HTTP,
+        // we might need to disable this.
+        const isSecure = process.env.NODE_ENV === 'production' && process.env.DISABLE_SECURE_COOKIES !== 'true';
+
         response.cookies.set('admin_session', sessionHash, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: isSecure,
             sameSite: 'strict',
             path: '/',
             maxAge: 60 * 60 * 24, // 1 day
