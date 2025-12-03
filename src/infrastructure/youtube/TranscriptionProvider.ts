@@ -6,7 +6,12 @@ export class TranscriptionProvider {
     private openai: OpenAI;
 
     constructor() {
-        // Assuming OPENAI_API_KEY is in process.env
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+            console.error('[TranscriptionProvider] OPENAI_API_KEY is missing in environment variables!');
+        } else {
+            console.log('[TranscriptionProvider] OpenAI client initialized with API key (length: ' + apiKey.length + ')');
+        }
         this.openai = new OpenAI();
     }
 
@@ -29,10 +34,22 @@ export class TranscriptionProvider {
             return response as unknown as string;
 
         } catch (err: any) {
-            console.error('[TranscriptionProvider] Raw Error:', err);
+            console.error('[TranscriptionProvider] Raw Error:', JSON.stringify(err, null, 2));
+
+            // Detect empty error object (typical of network/connection issues)
+            const isEmptyError = err && typeof err === 'object' && Object.keys(err).length === 0;
+            const isConnectionError = isEmptyError || err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT';
+
+            let message = err.message;
+            if (isConnectionError) {
+                message = 'Connection to OpenAI API failed. Check DNS, Firewall, or Proxy settings on the VPS.';
+            } else if (!message) {
+                message = 'Unknown error occurred';
+            }
+
             const error: YouTubeTranscriptionError = {
                 code: 'TRANSCRIPTION_FAILED',
-                message: `OpenAI transcription failed: ${err.message}`,
+                message: `OpenAI transcription failed: ${message}`,
             };
             throw error;
         }
