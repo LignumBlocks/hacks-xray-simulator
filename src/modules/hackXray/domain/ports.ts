@@ -45,3 +45,48 @@ export interface HackReportRepository {
         total: number;
     }>;
 }
+
+export type XRaySourceType = "url" | "text";
+
+export interface XRayEvent {
+    id: string;
+    reportId: string;
+    submittedAt: string; // ISO string
+    sourceType: XRaySourceType;
+    sourceHost?: string;
+    country: string;
+    clientIpHash?: string;
+    userAgent?: string;
+    verdictLabel: string;
+    legalityLabel: string;
+    mathScore0to10: number;
+    riskScore0to10: number;
+    practicalityScore0to10: number;
+    primaryCategory?: string;
+    adherenceLevel?: string;
+    createdAt: string; // ISO string
+}
+
+export interface BasicXRayStats {
+    totalEvents: number;
+    byVerdictLabel: Record<string, number>;
+    bySourceHost: { host: string; count: number }[];
+    byCountry: { country: string; count: number }[];
+    avgScores: {
+        mathScore0to10: number;
+        riskScore0to10: number;
+        practicalityScore0to10: number;
+    };
+    timeRange: {
+        from?: string;
+        to?: string;
+    };
+}
+
+export interface XRayEventRepository {
+    save(event: XRayEvent): Promise<void>;
+    getBasicStats(params: {
+        from?: Date;
+        to?: Date;
+    }): Promise<BasicXRayStats>;
+}
