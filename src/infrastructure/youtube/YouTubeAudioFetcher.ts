@@ -1,222 +1,200 @@
-import ytDlpModule, { create as createYtDlp } from 'yt-dlp-exec';
+import { create as createYtDlp } from 'yt-dlp-exec';
+import { spawn } from 'child_process';
 import { Readable } from 'stream';
 import { YouTubeTranscriptionError } from './types';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
+
+type VideoMeta = {
+    videoId?: string;
+    title?: string;
+    durationSec: number | null;
+};
 
 export class YouTubeAudioFetcher {
     private readonly MAX_DURATION_SECONDS = 1200; // 20 minutes
-    private ytDlp: ReturnType<typeof createYtDlp>;
+    private readonly META_TIMEOUT_MS = 60_000; // 60s para meta
+    // Nota: El timeout de descarga ya no es tan crítico porque es stream, 
+    // pero lo mantenemos para evitar procesos zombies si se cuelga.
+
+    private ytDlpBinaryPath: string;
     private cookiesPath?: string;
 
-    constructor() {
-        // Resolve absolute path to yt-dlp binary
-        // In Next.js/Turbopack, relative paths may not work correctly
-        const ytDlpBinary = path.resolve(process.cwd(), 'node_modules/yt-dlp-exec/bin/yt-dlp');
-        console.log(`[YouTubeAudioFetcher] Using yt-dlp binary at: ${ytDlpBinary}`);
+    // Instancia wrapper para metadata (promesas)
+    private ytDlpJsonClient: ReturnType<typeof createYtDlp>;
 
-        // Check for cookies file (optional, helps avoid YouTube bot detection)
+    // Cache simple en memoria
+    private metaCache = new Map<string, VideoMeta>();
+
+    constructor() {
+        // 1. Resolver path del binario
+        this.ytDlpBinaryPath = path.resolve(
+            process.cwd(),
+            'node_modules/yt-dlp-exec/bin/yt-dlp'
+        );
+        console.log(
+            `[YouTubeAudioFetcher] Using yt-dlp binary at: ${this.ytDlpBinaryPath}`
+        );
+
+        // 2. Resolver cookies
         const cookiesPath = path.resolve(process.cwd(), 'youtube-cookies.txt');
         if (fs.existsSync(cookiesPath)) {
             this.cookiesPath = cookiesPath;
-            console.log(`[YouTubeAudioFetcher] Using cookies from: ${cookiesPath}`);
+            console.log(
+                `[YouTubeAudioFetcher] Using cookies from: ${cookiesPath}`
+            );
         } else {
-            console.log(`[YouTubeAudioFetcher] No cookies file found at ${cookiesPath}, proceeding without cookies`);
+            console.log(
+                `[YouTubeAudioFetcher] No cookies file found at ${cookiesPath}, proceeding without cookies`
+            );
         }
 
-        // Create a custom instance with the explicit binary path
-        this.ytDlp = createYtDlp(ytDlpBinary);
+        // 3. Crear cliente para JSON (metadata) usando la ruta explícita
+        this.ytDlpJsonClient = createYtDlp(this.ytDlpBinaryPath);
     }
 
-    async fetchAudioStream(url: string): Promise<Readable> {
-        console.log(`[YouTubeAudioFetcher] Validating URL: ${url}`);
-
-        // Basic regex validation first to avoid spawning process for obvious bad inputs
-        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
-        if (!youtubeRegex.test(url)) {
-            const error: YouTubeTranscriptionError = {
-                code: 'UNSUPPORTED_URL',
-                message: 'The provided URL is not a valid YouTube URL.',
-            };
-            throw error;
-        }
+    /**
+     * Obtiene metadata. Usa cache para no repetir peticiones.
+     */
+    private async fetchVideoInfo(url: string): Promise<VideoMeta> {
+        const cached = this.metaCache.get(url);
+        if (cached) return cached;
 
         try {
-            console.log(`[YouTubeAudioFetcher] Fetching video info with yt-dlp...`);
-            const flags: any = {
-                dumpJson: true,
-                noWarnings: true,
-            };
+            console.log(`[YouTubeAudioFetcher] Getting video info for: ${url}`);
 
-            // Add cookies if available
-            if (this.cookiesPath) {
-                flags.cookies = this.cookiesPath;
-            }
-
-            const output = await this.ytDlp(url, flags);
-
-            // yt-dlp-exec returns the output as an object if dumpJson is true, 
-            // but the types might be loose. It usually returns the parsed JSON.
-            const info = output as any;
-            const durationSec = info.duration;
-            const title = info.title;
-
-            console.log(`[YouTubeAudioFetcher] Video found: ${title} (${durationSec}s)`);
-
-            if (durationSec > this.MAX_DURATION_SECONDS) {
-                console.error(`[YouTubeAudioFetcher] Video too long: ${durationSec}s > ${this.MAX_DURATION_SECONDS}s`);
-                const error: YouTubeTranscriptionError = {
-                    code: 'VIDEO_TOO_LONG',
-                    message: `Video is too long (${durationSec}s). Max allowed is ${this.MAX_DURATION_SECONDS}s.`,
-                };
-                throw error;
-            }
-
-            console.log(`[YouTubeAudioFetcher] Downloading audio stream...`);
-
-            const tempDir = os.tmpdir();
-            // We'll determine the filename dynamically based on success
-            const baseTempPath = path.join(tempDir, `yt-audio-${Date.now()}`);
-
-            // STRATEGY 1: FAST PATH
-            // Try to download native M4A (format 140) directly without conversion.
-            // This is much faster as it avoids FFmpeg re-encoding.
-            try {
-                const fastFile = `${baseTempPath}.m4a`;
-                console.log(`[YouTubeAudioFetcher] Attempting FAST download (native M4A) to: ${fastFile}`);
-
-                const fastFlags: any = {
-                    output: fastFile,
-                    format: '140/bestaudio[ext=m4a]', // Explicitly ask for M4A
-                    noWarnings: true,
-                };
-
-                if (this.cookiesPath) {
-                    fastFlags.cookies = this.cookiesPath;
-                }
-
-                await this.ytDlp(url, fastFlags);
-
-                if (fs.existsSync(fastFile)) {
-                    const fileSize = fs.statSync(fastFile).size;
-                    console.log(`[YouTubeAudioFetcher] FAST download successful! Size: ${fileSize} bytes`);
-                    return this.createCleanupStream(fastFile);
-                }
-            } catch (fastError: any) {
-                console.log(`[YouTubeAudioFetcher] Fast download failed (format likely unavailable), falling back to conversion. Error: ${fastError.message}`);
-            }
-
-            // STRATEGY 2: ROBUST PATH (Slower)
-            // Download whatever is available (likely WebM/Opus) and convert to M4A.
-            // This requires FFmpeg and takes CPU/time.
-            const convertFile = `${baseTempPath}-converted.m4a`;
-            console.log(`[YouTubeAudioFetcher] Attempting ROBUST download (convert to M4A) to: ${convertFile}`);
-
-            const convertFlags: any = {
-                output: convertFile,
-                extractAudio: true,
-                audioFormat: 'm4a',
-                // Removed audioQuality: 0 to use default (faster)
-                noWarnings: true,
-            };
-
-            if (this.cookiesPath) {
-                convertFlags.cookies = this.cookiesPath;
-            }
-
-            try {
-                await this.ytDlp(url, convertFlags);
-
-                if (fs.existsSync(convertFile)) {
-                    const fileSize = fs.statSync(convertFile).size;
-                    console.log(`[YouTubeAudioFetcher] Conversion successful! Size: ${fileSize} bytes`);
-                    return this.createCleanupStream(convertFile);
-                }
-            } catch (extractError: any) {
-                console.error('[YouTubeAudioFetcher] Audio extraction failed:', extractError.message);
-
-                // STRATEGY 3: FALLBACK (Video)
-                // If extraction fails (no FFmpeg), try downloading video and let OpenAI handle it
-                console.log('[YouTubeAudioFetcher] Falling back to video download...');
-                const videoFile = `${baseTempPath}.mp4`;
-
-                await this.ytDlp(url, {
-                    output: videoFile,
-                    format: 'best[ext=mp4]/best',
-                    noWarnings: true,
-                    cookies: this.cookiesPath,
-                });
-
-                const videoSize = fs.statSync(videoFile).size;
-                console.log(`[YouTubeAudioFetcher] Video downloaded as fallback, size: ${videoSize} bytes`);
-                return this.createCleanupStream(videoFile);
-            }
-
-            // If neither fast nor robust download succeeded, throw an error
-            throw new Error('All download strategies failed');
-
-        } catch (err: any) {
-            console.error(`[YouTubeAudioFetcher] Error:`, err);
-            // If it's already one of our typed errors, rethrow
-            if (err.code && ['UNSUPPORTED_URL', 'VIDEO_TOO_LONG'].includes(err.code)) {
-                throw err;
-            }
-
-            // Wrap unknown errors
-            const error: YouTubeTranscriptionError = {
-                code: 'FETCH_FAILED',
-                message: `Failed to fetch video info or stream: ${err.message}`,
-            };
-            throw error;
-        }
-    }
-
-    private createCleanupStream(filePath: string): Readable {
-        const stream = fs.createReadStream(filePath);
-
-        stream.on('end', () => {
-            console.log(`[YouTubeAudioFetcher] Cleaning up temp file: ${filePath}`);
-            fs.unlink(filePath, (err) => {
-                if (err) console.error(`[YouTubeAudioFetcher] Failed to delete temp file:`, err);
-            });
-        });
-
-        stream.on('error', () => {
-            fs.unlink(filePath, () => { });
-        });
-
-        return stream;
-    }
-
-    async getVideoMeta(url: string) {
-        try {
-            console.log(`[YouTubeAudioFetcher] Getting video meta for: ${url}`);
             const metaFlags: any = {
                 dumpJson: true,
                 noWarnings: true,
+                'no-playlist': true,  // Optimización: no escanear listas
+                'skip-download': true // Optimización: explícita
             };
 
             if (this.cookiesPath) {
                 metaFlags.cookies = this.cookiesPath;
             }
 
-            const output = await this.ytDlp(url, metaFlags);
-            const info = output as any;
+            // Usamos el wrapper de promesa para el JSON porque necesitamos esperar la respuesta
+            const output = await (this.ytDlpJsonClient as any)(url, metaFlags, {
+                timeout: this.META_TIMEOUT_MS,
+            });
 
-            return {
+            const info = output as any;
+            const durationSec = typeof info.duration === 'number' ? info.duration : null;
+
+            const meta: VideoMeta = {
                 videoId: info.id,
                 title: info.title,
-                durationSec: info.duration,
+                durationSec,
             };
+
+            this.metaCache.set(url, meta);
+            return meta;
         } catch (err: any) {
             console.error(`[YouTubeAudioFetcher] Meta Error:`, err);
-            const error: YouTubeTranscriptionError = {
+            throw {
                 code: 'FETCH_FAILED',
                 message: `Failed to fetch video meta: ${err.message}`,
-            };
-            throw error;
+            } as YouTubeTranscriptionError;
         }
     }
-}
 
+    /**
+     * Obtiene el stream de audio optimizado directo a stdout.
+     */
+    async fetchAudioStream(url: string): Promise<Readable> {
+        console.log(`[YouTubeAudioFetcher] Validating URL: ${url}`);
+
+        // Validación Regex básica
+        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+        if (!youtubeRegex.test(url)) {
+            throw {
+                code: 'UNSUPPORTED_URL',
+                message: 'The provided URL is not a valid YouTube URL.',
+            } as YouTubeTranscriptionError;
+        }
+
+        try {
+            // 1) Obtener y validar metadata
+            const info = await this.fetchVideoInfo(url);
+            const durationSec = info.durationSec;
+
+            console.log(`[YouTubeAudioFetcher] Video found: ${info.title} (${durationSec ?? 'unknown'}s)`);
+
+            if (durationSec && durationSec > this.MAX_DURATION_SECONDS) {
+                throw {
+                    code: 'VIDEO_TOO_LONG',
+                    message: `Video is too long (${durationSec}s). Max allowed is ${this.MAX_DURATION_SECONDS}s.`,
+                } as YouTubeTranscriptionError;
+            }
+
+            console.log(`[YouTubeAudioFetcher] Starting optimized audio stream...`);
+
+            // 2) Configurar flags para Streaming directo
+            // 2) Configurar argumentos para Streaming directo con spawn
+            // Prioridad: M4A nativo -> Cualquier Audio (Opus/WebM) -> Video fallback
+            const args = [
+                '--output', '-',
+                '--format', 'bestaudio[ext=m4a]/bestaudio/best',
+                '--no-playlist',
+                '--concurrent-fragments', '4',
+                '--buffer-size', '16k',
+                '--limit-rate', '50M',
+                '--quiet',
+                '--no-warnings',
+            ];
+
+            if (this.cookiesPath) {
+                args.push('--cookies', this.cookiesPath);
+            }
+
+            // URL al final
+            args.push(url);
+
+            // 3) Ejecutar proceso nativo con spawn
+            console.log(`[YouTubeAudioFetcher] Spawning: ${this.ytDlpBinaryPath} ${args.join(' ')}`);
+
+            const subprocess = spawn(this.ytDlpBinaryPath, args);
+
+            if (!subprocess.stdout) {
+                throw new Error('Failed to spawn yt-dlp process (no stdout).');
+            }
+
+            // Manejo básico de errores del proceso
+            subprocess.stderr?.on('data', (data) => {
+                const msg = data.toString();
+                // Ignorar warnings de yt-dlp, solo errores reales
+                if (msg.toLowerCase().includes('error')) {
+                    console.error(`[YouTubeAudioFetcher] yt-dlp stderr: ${msg}`);
+                }
+            });
+
+            // Retornamos directamente el stream
+            return subprocess.stdout;
+
+        } catch (err: any) {
+            console.error(`[YouTubeAudioFetcher] Error in fetchAudioStream:`, err);
+
+            if (err?.code && ['UNSUPPORTED_URL', 'VIDEO_TOO_LONG', 'FETCH_FAILED'].includes(err.code)) {
+                throw err as YouTubeTranscriptionError;
+            }
+
+            throw {
+                code: 'FETCH_FAILED',
+                message: `Failed to fetch stream: ${err.message}`,
+            } as YouTubeTranscriptionError;
+        }
+    }
+
+    /**
+     * API pública para obtener sólo metadata.
+     */
+    async getVideoMeta(url: string) {
+        const info = await this.fetchVideoInfo(url);
+        return {
+            videoId: info.videoId,
+            title: info.title,
+            durationSec: info.durationSec,
+        };
+    }
+}
